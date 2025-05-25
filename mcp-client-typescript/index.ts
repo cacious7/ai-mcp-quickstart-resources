@@ -74,71 +74,100 @@ class MCPClient {
       console.log("Failed to connect to MCP server: ", e);
       throw e;
     }
-  }
-
-  async processQuery(query: string) {
+  }  async processQuery(query: string) {
     /**
      * Process a query using Claude and available tools
      *
      * @param query - The user's input query
      * @returns Processed response as a string
      */
-    const messages: MessageParam[] = [
-      {
-        role: "user",
-        content: query,
-      },
-    ];
-
-    // Initial Claude API call
-    const response = await this.anthropic.messages.create({
-      model: "claude-3-5-sonnet-20241022",
-      max_tokens: 1000,
-      messages,
-      tools: this.tools,
-    });
-
-    // Process response and handle tool calls
-    const finalText = [];
-    const toolResults = [];
-
-    for (const content of response.content) {
-      if (content.type === "text") {
-        finalText.push(content.text);
-      } else if (content.type === "tool_use") {
-        // Execute tool call
-        const toolName = content.name;
-        const toolArgs = content.input as { [x: string]: unknown } | undefined;
-
-        const result = await this.mcp.callTool({
-          name: toolName,
-          arguments: toolArgs,
-        });
-        toolResults.push(result);
-        finalText.push(
-          `[Calling tool ${toolName} with args ${JSON.stringify(toolArgs)}]`,
-        );
-
-        // Continue conversation with tool results
-        messages.push({
+    try {
+      const messages: MessageParam[] = [
+        {
           role: "user",
-          content: result.content as string,
-        });
+          content: query,
+        },
+      ];
 
-        // Get next response from Claude
-        const response = await this.anthropic.messages.create({
+      // Initial Claude API call
+      console.log("Sending query to Claude...");
+      
+      let response;
+      try {
+        response = await this.anthropic.messages.create({
           model: "claude-3-5-sonnet-20241022",
           max_tokens: 1000,
           messages,
+          tools: this.tools,
         });
-
-        finalText.push(
-          response.content[0].type === "text" ? response.content[0].text : "",
-        );
+      } catch (apiError) {
+        if (apiError.error?.error?.type === "invalid_request_error" && 
+            apiError.error?.error?.message?.includes("credit balance is too low")) {
+          return "Error: Your Anthropic API key has insufficient credits. Please add credits to your account or use a different API key in your .env file.";
+        }
+        throw apiError;
       }
-    }
 
-    return finalText.join("\n");
+      // Process response and handle tool calls
+      const finalText = [];
+      const toolResults = [];
+
+      for (const content of response.content) {
+        if (content.type === "text") {
+          finalText.push(content.text);
+        } else if (content.type === "tool_use") {
+          try {
+            // Execute tool call
+            const toolName = content.name;
+            const toolArgs = content.input as { [x: string]: unknown } | undefined;
+
+            console.log(`Calling tool ${toolName}...`);
+            const result = await this.mcp.callTool({
+              name: toolName,
+              arguments: toolArgs,
+            });
+            toolResults.push(result);
+            finalText.push(
+              `[Calling tool ${toolName} with args ${JSON.stringify(toolArgs)}]`,
+            );
+
+            // Continue conversation with tool results
+            if (result && result.content) {
+              messages.push({
+                role: "user",
+                content: result.content as string,
+              });
+
+              // Get next response from Claude
+              console.log("Getting follow-up response from Claude...");
+              const followUpResponse = await this.anthropic.messages.create({
+                model: "claude-3-5-sonnet-20241022",
+                max_tokens: 1000,
+                messages,
+              });
+
+              if (followUpResponse && followUpResponse.content && followUpResponse.content[0]) {
+                finalText.push(
+                  followUpResponse.content[0].type === "text" ? followUpResponse.content[0].text : "",
+                );
+              } else {
+                finalText.push("No follow-up response received from Claude.");
+              }
+            } else {
+              finalText.push("Warning: Tool returned an invalid result.");
+            }
+          } catch (toolError) {
+            console.error("Error during tool execution:", toolError);
+            finalText.push(`Error calling tool: ${toolError.message}`);
+          }
+        }
+      }
+
+      return finalText.join("\n");
+    } catch (error) {
+      console.error("Error in processQuery:", error);
+      return `Error processing query: ${error.message}. Please try again.`;
+    }
   }
 
   async chatLoop() {
@@ -182,10 +211,20 @@ async function main() {
   }
   const mcpClient = new MCPClient();
   try {
+    console.log(`Connecting to server script: ${process.argv[2]}`);
     await mcpClient.connectToServer(process.argv[2]);
     await mcpClient.chatLoop();
+  } catch (error) {
+    console.error("Error in main:", error);
+    console.log("The application encountered an error. Please check the server script path and try again.");
   } finally {
-    await mcpClient.cleanup();
+    console.log("Cleaning up resources...");
+    try {
+      await mcpClient.cleanup();
+    } catch (cleanupError) {
+      console.error("Error during cleanup:", cleanupError);
+    }
+    console.log("Exiting application.");
     process.exit(0);
   }
 }

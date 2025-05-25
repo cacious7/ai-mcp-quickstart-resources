@@ -1,0 +1,40 @@
+import { Tool } from './types';
+
+/**
+ * Interface for model providers that can be used with MCP
+ */
+export interface ModelProvider {
+  /**
+   * Name of the model provider
+   */
+  name: string;
+
+  /**
+   * Initialize the model provider
+   */
+  initialize(): Promise<void>;
+
+  /**
+   * Generate a response for a given query with optional tools
+   * 
+   * @param query The user query
+   * @param tools Available MCP tools
+   * @param context Previous conversation context
+   * @returns Response and any tool calls
+   */
+  generateResponse(query: string, tools: Tool[], context: any[]): Promise<{
+    content: string;
+    toolCalls: {
+      name: string;
+      arguments: Record<string, unknown>;
+    }[];
+  }>;
+
+  /**
+   * Generate a follow-up response after a tool has been called
+   * 
+   * @param context Previous conversation context including tool results
+   * @returns Response content
+   */
+  generateFollowUp(context: any[]): Promise<string>;
+}

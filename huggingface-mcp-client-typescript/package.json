@@ -1,0 +1,28 @@
+{
+  "name": "huggingface-mcp-client-typescript",
+  "version": "1.0.0",
+  "description": "An MCP client that uses Hugging Face models with the weather server",
+  "main": "build/index.js",
+  "type": "module",
+  "scripts": {
+    "build": "tsc && node -e \"require('fs').chmodSync('build/index.js', '755')\"",
+    "start": "node build/index.js",
+    "verify": "npm run build && node build/verify-models.js",
+    "verify:model": "npm run build && node build/verify-models.js --model",
+    "setup": "npm run build && node build/setup-models.js"
+  },
+  "keywords": ["mcp", "model-context-protocol", "huggingface", "llm", "weather"],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@huggingface/inference": "^2.6.4",
+    "@modelcontextprotocol/sdk": "^1.11.4",
+    "dotenv": "^16.5.0",
+    "readline-sync": "^1.4.10"
+  },
+  "devDependencies": {
+    "@types/node": "^22.15.19",
+    "@types/readline-sync": "^1.4.8",
+    "typescript": "^5.8.3"
+  }
+}
