@@ -6,6 +6,7 @@ export type {
   OllamaMessage, 
   OllamaResponse, 
   OllamaModel, 
+  ModelInfo,
   ChatRequest, 
   LegalContext 
 } from './ollamaApi'

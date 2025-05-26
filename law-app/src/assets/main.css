@@ -347,36 +347,40 @@ a:hover {
   to { transform: rotate(360deg); }
 }
 
-/* Responsive design */
-@media (max-width: 768px) {
-  html { font-size: 14px; }
-  
-  h1 { font-size: 2rem; }
-  h2 { font-size: 1.75rem; }
-  h3 { font-size: 1.5rem; }
-  
-  .container { padding: 0 var(--space-sm); }
-  
-  .grid-2,
-  .grid-3,
-  .grid-4 {
-    grid-template-columns: 1fr;
-  }
-  
-  .btn {
-    width: 100%;
-    justify-content: center;
-  }
-  
-  .card {
-    padding: var(--space-md);
-    margin-bottom: var(--space-md);
-  }
+/* User message text color */
+.user-message .message-content p {
+  color: var(--text-primary); /* Changed from var(--text-secondary) */
 }
 
-@media (max-width: 480px) {
-  .btn-large {
-    padding: var(--space-md) var(--space-lg);
-    font-size: 1rem;
-  }
+/* Google-inspired input style - RETAIN THIS if still used by q-input directly elsewhere,
+   but the primary styling is now in ChatView.vue scoped styles for the new container */
+.google-inspired-input .q-field__control {
+  border-radius: 24px !important;
+  box-shadow: 0 1px 6px rgba(32, 33, 36, 0.28) !important;
+  background-color: #fff !important;
 }
+
+.google-inspired-input .q-field__native {
+  padding-left: 20px !important;
+}
+
+.google-inspired-input.q-field--focused .q-field__control {
+  box-shadow: 0 2px 8px rgba(32, 33, 36, 0.35) !important;
+}
+
+/* Adjustments for the send button if it's part of the q-input slot */
+.message-input .q-btn { /* Targeting send button if it's a q-btn */
+  align-self: center; /* Vertically center button in the input */
+}
+
+/* Ensure the input section itself is not overly styled globally if specific layout is in component */
+/* .input-section { */
+  /* background-color: var(--bg-primary); /* Or a specific color for this bar */
+  /* padding: var(--space-sm) var(--space-md); */
+  /* border-top: 1px solid var(--border-light); */
+  /* display: flex; /* These are now handled in scoped styles mostly */
+  /* align-items: center; */
+/* } */
+
+/* The main container for the input field and model selector (if global styling needed) */
+/* Most of this styling is now in ChatView.vue's scoped CSS using .google-inspired-input-container */

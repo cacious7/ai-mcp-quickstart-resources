@@ -148,6 +148,11 @@ export const useLegalDataStore = defineStore('legalData', () => {
 
   // Actions
   const initializeData = async () => {
+    // If already loaded, don't reload
+    if (documents.value.length > 0) {
+      return
+    }
+    
     loading.value = true
     error.value = null
 
@@ -158,6 +163,7 @@ export const useLegalDataStore = defineStore('legalData', () => {
         loadUpdates()
       ])
     } catch (err) {
+      console.error('Error loading legal data:', err)
       error.value = err instanceof Error ? err.message : 'Failed to load legal data'
     } finally {
       loading.value = false

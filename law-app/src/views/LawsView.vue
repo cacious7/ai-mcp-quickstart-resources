@@ -296,7 +296,17 @@ const itemsPerPage = 12
 // Remove mock data, initialize and use real data from the store
 const legalStore = useLegalDataStore()
 onMounted(() => {
-  legalStore.initializeData()
+  // Load laws data and handle loading state
+  loading.value = true;
+  legalStore.initializeData().then(() => {
+    // Give a small delay to ensure store is updated
+    setTimeout(() => {
+      loading.value = false;
+    }, 300);
+  }).catch(err => {
+    console.error('Error initializing legal data:', err);
+    loading.value = false;
+  });
 })
 
 const categories = computed(() => legalStore.categories)
@@ -473,8 +483,17 @@ const formatDate = (date: Date) => {
 
 // Lifecycle
 onMounted(() => {
-  // Load laws data
-  loading.value = false
+  // Load laws data and handle loading state
+  loading.value = true;
+  legalStore.initializeData().then(() => {
+    // Give a small delay to ensure store is updated
+    setTimeout(() => {
+      loading.value = false;
+    }, 300);
+  }).catch(err => {
+    console.error('Error initializing legal data:', err);
+    loading.value = false;
+  });
 })
 </script>
 

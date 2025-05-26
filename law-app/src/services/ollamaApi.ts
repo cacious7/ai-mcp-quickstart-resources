@@ -35,6 +35,14 @@ export interface OllamaModel {
   }
 }
 
+export interface ModelInfo {
+  name: string
+  displayName: string
+  description: string
+  size: string
+  capabilities: string[]
+}
+
 export interface ChatRequest {
   model: string
   messages: OllamaMessage[]
@@ -60,6 +68,7 @@ class OllamaApiService {
   private client: AxiosInstance
   private baseUrl: string
   private defaultModel: string
+  private abortController: AbortController | null = null
 
   constructor(baseUrl: string = 'http://localhost:11434') {
     this.baseUrl = baseUrl
@@ -67,7 +76,7 @@ class OllamaApiService {
     
     this.client = axios.create({
       baseURL: this.baseUrl,
-      timeout: 30000,
+      timeout: 300000, // 5 minutes timeout instead of 30 seconds
       headers: {
         'Content-Type': 'application/json',
       },
@@ -117,9 +126,8 @@ class OllamaApiService {
       return false
     }
   }
-
   /**
-   * Get list of available models
+   * Get list of available models with enhanced information
    */
   async getModels(): Promise<OllamaModel[]> {
     try {
@@ -132,9 +140,74 @@ class OllamaApiService {
   }
 
   /**
-   * Send a chat message to Ollama
+   * Get enhanced model information with display names and descriptions
+   */
+  getModelInfo(): ModelInfo[] {
+    return [
+      {
+        name: 'phi3',
+        displayName: 'Phi-3 Mini',
+        description: 'Fast and efficient for general conversations',
+        size: '2.3GB',
+        capabilities: ['chat', 'reasoning', 'coding']
+      },
+      {
+        name: 'phi3:medium',
+        displayName: 'Phi-3 Medium',
+        description: 'Balanced performance and quality',
+        size: '7.9GB',
+        capabilities: ['chat', 'reasoning', 'coding', 'analysis']
+      },
+      {
+        name: 'llama3',
+        displayName: 'Llama 3 8B',
+        description: 'High-quality responses with good reasoning',
+        size: '4.7GB',
+        capabilities: ['chat', 'reasoning', 'analysis', 'creative']
+      },
+      {
+        name: 'llama3:70b',
+        displayName: 'Llama 3 70B',
+        description: 'Excellent quality, requires more resources',
+        size: '40GB',
+        capabilities: ['chat', 'reasoning', 'analysis', 'creative', 'expert']
+      },
+      {
+        name: 'gemma',
+        displayName: 'Gemma 7B',
+        description: 'Google\'s efficient model for various tasks',
+        size: '5.0GB',
+        capabilities: ['chat', 'reasoning', 'coding']
+      },
+      {
+        name: 'mistral',
+        displayName: 'Mistral 7B',
+        description: 'Excellent for coding and technical discussions',
+        size: '4.1GB',
+        capabilities: ['chat', 'coding', 'technical', 'reasoning']
+      }
+    ]
+  }
+
+  /**
+   * Cancel current request
+   */
+  cancelRequest(): void {
+    if (this.abortController) {
+      this.abortController.abort()
+      this.abortController = null
+    }
+  }
+  /**
+   * Send a chat message to Ollama with cancellation support
    */
   async chat(messages: OllamaMessage[], model?: string, options?: ChatRequest['options']): Promise<OllamaResponse> {
+    // Cancel any existing request
+    this.cancelRequest()
+    
+    // Create new abort controller
+    this.abortController = new AbortController()
+    
     const request: ChatRequest = {
       model: model || this.defaultModel,
       messages: this.prepareLegalMessages(messages),
@@ -148,18 +221,30 @@ class OllamaApiService {
     }
 
     try {
-      const response: AxiosResponse<OllamaResponse> = await this.client.post('/api/chat', request)
+      const response: AxiosResponse<OllamaResponse> = await this.client.post('/api/chat', request, {
+        signal: this.abortController.signal
+      })
       return response.data
     } catch (error: unknown) {
+      if (axios.isCancel(error)) {
+        throw new Error('Request was cancelled')
+      }
       console.error('Chat request failed:', error)
       throw new Error('Failed to get response from AI model')
+    } finally {
+      this.abortController = null
     }
   }
-
   /**
-   * Stream chat response from Ollama
+   * Stream chat response from Ollama with cancellation support
    */
   async *chatStream(messages: OllamaMessage[], model?: string, options?: ChatRequest['options']): AsyncGenerator<OllamaResponse> {
+    // Cancel any existing request
+    this.cancelRequest()
+    
+    // Create new abort controller
+    this.abortController = new AbortController()
+    
     const request: ChatRequest = {
       model: model || this.defaultModel,
       messages: this.prepareLegalMessages(messages),
@@ -174,13 +259,18 @@ class OllamaApiService {
 
     try {
       const response = await this.client.post('/api/chat', request, {
-        responseType: 'stream'
+        responseType: 'stream',
+        signal: this.abortController.signal
       })
 
       const reader = response.data
       let buffer = ''
 
       for await (const chunk of reader) {
+        if (this.abortController.signal.aborted) {
+          throw new Error('Request was cancelled')
+        }
+        
         buffer += chunk.toString()
         const lines = buffer.split('\n')
         buffer = lines.pop() || ''
@@ -197,8 +287,13 @@ class OllamaApiService {
         }
       }
     } catch (error) {
+      if (axios.isCancel(error)) {
+        throw new Error('Request was cancelled')
+      }
       console.error('Stream chat request failed:', error)
       throw new Error('Failed to stream response from AI model')
+    } finally {
+      this.abortController = null
     }
   }
 

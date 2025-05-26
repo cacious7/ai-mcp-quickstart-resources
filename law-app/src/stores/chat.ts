@@ -1,6 +1,6 @@
 import { ref, computed } from 'vue'
 import { defineStore } from 'pinia'
-import { ollamaApi, type OllamaMessage } from '@/services'
+import { ollamaApi, type OllamaMessage, type ModelInfo } from '@/services'
 
 export interface ChatMessage {
   id: string
@@ -18,15 +18,18 @@ export interface ChatSession {
   messages: ChatMessage[]
   createdAt: Date
   updatedAt: Date
+  model?: string
 }
 
-export const useChatStore = defineStore('chat', () => {
-  // State
+export const useChatStore = defineStore('chat', () => {  // State
   const sessions = ref<ChatSession[]>([])
   const currentSessionId = ref<string | null>(null)
   const isTyping = ref(false)
   const isConnected = ref(false)
   const errorMessage = ref<string | null>(null)
+  const selectedModel = ref<string>('phi3')
+  const availableModels = ref<ModelInfo[]>([])
+  const isLoadingModels = ref(false)
 
   // Getters
   const currentSession = computed(() => {
@@ -48,16 +51,16 @@ export const useChatStore = defineStore('chat', () => {
       .sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime())
       .slice(0, 5)
   })
-
   // Actions
-  const createSession = (title?: string): string => {
+  const createSession = (title?: string, model?: string): string => {
     const sessionId = generateId()
     const newSession: ChatSession = {
       id: sessionId,
       title: title || 'New Chat',
       messages: [],
       createdAt: new Date(),
-      updatedAt: new Date()
+      updatedAt: new Date(),
+      model: model || selectedModel.value
     }
     
     sessions.value.push(newSession)
@@ -147,12 +150,47 @@ export const useChatStore = defineStore('chat', () => {
   const setConnectionStatus = (connected: boolean) => {
     isConnected.value = connected
   }
-
   const setError = (error: string | null) => {
     errorMessage.value = error
   }
-  // Send message to AI
-  const sendMessage = async (content: string): Promise<void> => {
+
+  const setSelectedModel = (model: string) => {
+    selectedModel.value = model
+    // Update current session model if it exists
+    if (currentSession.value) {
+      currentSession.value.model = model
+      saveSessionsToStorage()
+    }
+  }
+
+  const loadAvailableModels = async () => {
+    isLoadingModels.value = true
+    try {
+      // Get model info (this doesn't require Ollama to be running)
+      availableModels.value = ollamaApi.getModelInfo()
+      
+      // Try to get actual installed models
+      const installedModels = await ollamaApi.getModels()
+      
+      // Mark which models are actually installed
+      availableModels.value = availableModels.value.map(model => ({
+        ...model,
+        installed: installedModels.some(installed => installed.name.includes(model.name))
+      }))
+    } catch (error) {
+      console.warn('Could not fetch installed models:', error)
+      // Still show available models even if we can't check installation status
+      availableModels.value = ollamaApi.getModelInfo()
+    } finally {
+      isLoadingModels.value = false
+    }
+  }
+
+  const cancelCurrentRequest = () => {
+    ollamaApi.cancelRequest()
+    setTyping(false)
+  }  // Send message to AI
+  const sendMessage = async (content: string, useModel?: string): Promise<void> => {
     try {
       setError(null)
       
@@ -168,6 +206,9 @@ export const useChatStore = defineStore('chat', () => {
       // Set typing indicator
       setTyping(true)
       
+      // Use specified model or current session model or selected model
+      const modelToUse = useModel || currentSession.value?.model || selectedModel.value
+      
       // Prepare messages for API
       const messages: OllamaMessage[] = currentMessages.value.map(msg => ({
         role: msg.role,
@@ -175,13 +216,17 @@ export const useChatStore = defineStore('chat', () => {
       }))
       
       // Call Ollama API
-      const response = await ollamaApi.chat(messages)
+      const response = await ollamaApi.chat(messages, modelToUse)
       
       // Add AI response
       addMessage(response.message.content, 'assistant')
       
     } catch (error) {
       console.error('Error sending message:', error)
+      if (error instanceof Error && error.message === 'Request was cancelled') {
+        // Don't show error for cancelled requests
+        return
+      }
       setError(error instanceof Error ? error.message : 'Failed to send message')
     } finally {
       setTyping(false)
@@ -235,9 +280,9 @@ export const useChatStore = defineStore('chat', () => {
   const generateId = (): string => {
     return Date.now().toString(36) + Math.random().toString(36).substr(2)
   }
-
   // Initialize store
   loadSessionsFromStorage()
+  loadAvailableModels()
 
   return {
     // State
@@ -246,6 +291,9 @@ export const useChatStore = defineStore('chat', () => {
     isTyping,
     isConnected,
     errorMessage,
+    selectedModel,
+    availableModels,
+    isLoadingModels,
     
     // Getters
     currentSession,
@@ -264,6 +312,9 @@ export const useChatStore = defineStore('chat', () => {
     setTyping,
     setConnectionStatus,
     setError,
+    setSelectedModel,
+    loadAvailableModels,
+    cancelCurrentRequest,
     sendMessage,
     saveSessionsToStorage,
     loadSessionsFromStorage,
